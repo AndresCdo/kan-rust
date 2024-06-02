@@ -1,0 +1,20 @@
+[package]
+name = "kan"
+version = "0.1.0"
+authors = ["Andres Caicedo <andres.felipe.caicedo.ultengo@outlook.com>"]
+edition = "2021"
+
+[lib]
+name = "kan"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kan"
+path = "src/bin/kan.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+indicatif = "0.15"
+ctrlc = "3.1"
