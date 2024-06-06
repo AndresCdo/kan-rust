@@ -1,4 +1,4 @@
-# KAN Neural Network
+# Kolmogorov–Arnold Network (KAN) in Rust
 
 This project is a Rust implementation of a Kolmogorov–Arnold Network (KAN) neural network. The KAN network is a type of feedforward neural network that uses a spline activation function to approximate any continuous function. The network is trained using backpropagation and gradient descent to minimize the loss function. The project includes a library for building and training the network, as well as an example application that demonstrates how to use the network to solve a regression problem.
 
