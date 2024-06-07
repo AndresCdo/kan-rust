@@ -287,4 +287,9 @@ impl Vector {
     pub fn ones(size: usize) -> Vector {
         Vector::new(vec![1.0; size])
     }
+
+    // Mean Squared Error
+    pub fn square(&self) -> Vector {
+        Vector::new(self.elements.iter().map(|&x| x.powi(2)).collect())
+    }
 }
