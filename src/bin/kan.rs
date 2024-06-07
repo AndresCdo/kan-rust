@@ -1,14 +1,13 @@
 use kan::{data_structures::*, network::Network};
 use rand::{thread_rng, Rng};
-use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
 use std::error::Error;
 use serde_json::{to_writer, Error as JsonError};
 use std::fs::{File, OpenOptions};
 
 const LEARNING_RATE: f32 = 0.1;
-const NUM_EPOCHS: u32 = 100;
-const INPUT_SIZE: usize = 10;
+const NUM_EPOCHS: usize = 500;
+const INPUT_SIZE: usize = 100;
 
 fn main() -> Result<(), Box<dyn Error>> {
     /*T his project is a Rust implementation of a Kolmogorov–Arnold Network (KAN) neural network. */
@@ -23,29 +22,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let layer = Layer::new(weights, biases);
     let mut model = Network::new(vec![layer]);
 
-    // Setup progress bar with custom style
-    let progress_bar = ProgressBar::new(NUM_EPOCHS as u64).with_style(
-        ProgressStyle::default_bar()
-            .template("{spinner} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}")
-            .progress_chars("#>-"),
-    );
-
-    progress_bar.set_message("Training...");
-
-
     // Generate random input and target vectors
-    let input = Vector::random(INPUT_SIZE);
-    let target = Vector::random(INPUT_SIZE);
+    let input = Vector::new(Vector::random(INPUT_SIZE).elements.iter().map(|&x| if x > 0.0 { 1.0 } else { 0.0 }).collect());
+    let target = Vector::new(Vector::random(INPUT_SIZE).elements.iter().map(|&x| if x > 0.0 { 1.0 } else { 0.0 }).collect());
 
     // Training loop
-    for _ in 0..NUM_EPOCHS {
-        // Train the model on the input and target
-        model.train(input.clone(), target.clone(), LEARNING_RATE);
-
-        // Increment the progress bar
-        progress_bar.inc(1);
-    }
-    progress_bar.finish();
+    // Train the model on the input and target
+    model.train(input.clone(), target.clone(), NUM_EPOCHS);
     // Evaluate the model on a test set from the input and target
     let test_input = Vector::new(input.elements.iter().map(|&x| x + 0.1).collect());
     let test_target = Vector::new(target.elements.iter().map(|&x| x + 0.1).collect());
