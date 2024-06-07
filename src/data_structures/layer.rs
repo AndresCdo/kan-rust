@@ -1,6 +1,6 @@
 
 use crate::data_structures::{matrix, Matrix, Vector};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
@@ -34,12 +34,12 @@ impl Layer {
         // println!("input: {:?}", input);
         // println!("weights: {:?}", self.weights);
         // println!("biases: {:?}", self.biases);
-        let output = self.weights.multiply_with_vector(input).unwrap().add(&self.biases).unwrap();
+        let output = self.weights.multiply_with_vector(input).unwrap().add(&self.biases);
 
 
         // println!("output: {:?}", output);
         
-        output.unwrap()
+        output
     }
 
     /// Performs the backward propagation of the layer.
@@ -63,9 +63,8 @@ impl Layer {
 
     /// Updates the weights and biases of the layer based on the gradients and learning rate.
     pub fn update(&mut self, weight_gradients: &Matrix, delta: &Vector, learning_rate: f32) {
-        let weight_gradients = weight_gradients.scalar_multiply(learning_rate);
-        self.weights = self.weights.subtract(&weight_gradients).unwrap();
-        self.biases = self.biases.subtract(&delta).unwrap().unwrap()
+        self.weights = weight_gradients.scalar_multiply(learning_rate).add(&self.weights).unwrap();
+        self.biases = delta.scalar_multiply(learning_rate).add(&self.biases);
     }
 
     /// Trains the layer on a single input and target.
