@@ -30,14 +30,14 @@ impl Layer {
     /// Performs the forward propagation of the layer.
     pub fn forward(&self, input: &Vector) -> Vector {
         // Compute the dot product of weights and input, then add biases
-        println!("Forward");
-        println!("input: {:?}", input);
+        // println!("Forward");
+        // println!("input: {:?}", input);
         // println!("weights: {:?}", self.weights);
         // println!("biases: {:?}", self.biases);
         let output = self.weights.multiply_with_vector(input).unwrap().add(&self.biases).unwrap();
 
 
-        println!("output: {:?}", output);
+        // println!("output: {:?}", output);
         
         output.unwrap()
     }

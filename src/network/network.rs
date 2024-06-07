@@ -33,13 +33,17 @@ impl Network {
             inputs.push(output.clone());
         }
         let mut error = outputs.last().unwrap().subtract(&target);
-        let mut weight_gradients = self.layers.last().unwrap().weight_gradients(&inputs[inputs.len() - 2], &outputs[outputs.len() - 2], &error);
-        let mut delta = self.layers.last().unwrap().delta(&error, &outputs[outputs.len() - 2]);
+        let mut gradient = outputs.last().unwrap().elementwise_multiply(&outputs.last().unwrap().subtract(&Vector::ones(outputs.last().unwrap().len())));
+        let mut delta = self.delta(&error, &gradient);
+        let mut weight_gradients = self.weight_gradients(&inputs[inputs.len() - 2], &outputs[outputs.len() - 2], &delta);
+
         for i in (1..self.layers.len()).rev() {
-            error = self.layers[i].weights.transpose().multiply_with_vector(&error).unwrap();
-            let gradient = outputs[i].elementwise_multiply(&outputs[i].subtract(&Vector::ones(outputs[i].len())));
-            delta = self.layers[i].delta(&error, &gradient);
-            weight_gradients = weight_gradients.add(&self.layers[i].weight_gradients(&inputs[i - 1], &outputs[i - 1], &delta)).unwrap();
+            let layer = &self.layers[i];
+            let input = &inputs[i - 1];
+            let output = &outputs[i - 1];
+            let (weight_gradient, new_delta) = layer.backward(input, output, &delta);
+            weight_gradients = weight_gradients.add(&weight_gradient).unwrap();
+            delta = new_delta;
         }
         (weight_gradients, delta)
     }
@@ -51,7 +55,6 @@ impl Network {
     }
 
     pub fn train(&mut self, input: Vector, target: Vector, learning_rate: f32) {
-        self.forward(input.clone());
         let (weight_gradients, delta) = self.backward(input, target);
         self.update(&weight_gradients, &delta, learning_rate);
     }
