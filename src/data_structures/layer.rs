@@ -1,8 +1,7 @@
-
 use crate::data_structures::{matrix, Matrix, Vector};
-use serde::{Deserialize, Serialize};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use serde::{de, Deserialize, Serialize};
 
 /// A layer in a neural network.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -30,16 +29,19 @@ impl Layer {
     /// Performs the forward propagation of the layer.
     pub fn forward(&self, input: &Vector) -> Vector {
         // Compute the dot product of weights and input, then add biases
-        println!("Forward");
-        println!("input: {:?}", input);
+        // println!("Forward");
+        // println!("input: {:?}", input);
         // println!("weights: {:?}", self.weights);
         // println!("biases: {:?}", self.biases);
-        let output = self.weights.multiply_with_vector(input).unwrap().add(&self.biases).unwrap();
+        let output = self
+            .weights
+            .multiply_with_vector(input)
+            .unwrap()
+            .add(&self.biases);
 
+        // println!("output: {:?}", output);
 
-        println!("output: {:?}", output);
-        
-        output.unwrap()
+        output
     }
 
     /// Performs the backward propagation of the layer.
@@ -60,12 +62,13 @@ impl Layer {
         (weight_gradients, delta)
     }
 
-
     /// Updates the weights and biases of the layer based on the gradients and learning rate.
     pub fn update(&mut self, weight_gradients: &Matrix, delta: &Vector, learning_rate: f32) {
-        let weight_gradients = weight_gradients.scalar_multiply(learning_rate);
-        self.weights = self.weights.subtract(&weight_gradients).unwrap();
-        self.biases = self.biases.subtract(&delta).unwrap().unwrap()
+        self.weights = weight_gradients
+            .scalar_multiply(learning_rate)
+            .add(&self.weights)
+            .unwrap();
+        self.biases = delta.scalar_multiply(learning_rate).add(&self.biases);
     }
 
     /// Trains the layer on a single input and target.
@@ -156,8 +159,11 @@ impl Layer {
 
     /// Calculates the average loss for a batch of inputs and targets.
     pub fn loss_batch(&self, inputs: &[Vector], targets: &[Vector]) -> f32 {
-        let total_loss: f32 =
-            inputs.iter().zip(targets).map(|(input, target)| self.loss(input, target)).sum();
+        let total_loss: f32 = inputs
+            .iter()
+            .zip(targets)
+            .map(|(input, target)| self.loss(input, target))
+            .sum();
         total_loss / inputs.len() as f32
     }
 
@@ -173,14 +179,16 @@ impl Layer {
 
     /// Evaluates the layer on a batch of inputs and targets.
     pub fn evaluate_batch(&self, inputs: &[Vector], targets: &[Vector]) -> (f32, f32) {
-        (self.loss_batch(inputs, targets), self.accuracy_batch(inputs, targets))
+        (
+            self.loss_batch(inputs, targets),
+            self.accuracy_batch(inputs, targets),
+        )
     }
 
     pub fn from_str(s: &str) -> Self {
         let mut lines = s.lines();
-        let weights = Matrix::from_string(lines.next().unwrap()).unwrap();  
-        let biases = Vector::from_string(lines.next().unwrap())
-            .unwrap();  
+        let weights = Matrix::from_string(lines.next().unwrap()).unwrap();
+        let biases = Vector::from_string(lines.next().unwrap()).unwrap();
         Layer { weights, biases }
     }
 
@@ -208,7 +216,9 @@ impl Layer {
         let mut weight_gradients = Matrix::zeros(cols, rows);
         for i in 0..cols {
             for j in 0..rows {
-                weight_gradients.set_element(i, j, input.get_element(i) * gradient.get_element(j)).unwrap();
+                weight_gradients
+                    .set_element(i, j, input.get_element(i) * gradient.get_element(j))
+                    .unwrap();
             }
         }
         weight_gradients
