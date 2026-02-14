@@ -33,10 +33,10 @@ impl Matrix {
             );
             return Err("Matrix dimensions do not match for multiplication");
         }
-        
+
         let col_count = other.col_count();
         let mut result = Vec::with_capacity(self.row_count());
-        
+
         for row in &self.rows {
             let mut new_row = Vec::with_capacity(col_count);
             for col in 0..col_count {
@@ -46,7 +46,7 @@ impl Matrix {
             }
             result.push(Vector::new(new_row));
         }
-        
+
         Ok(Matrix::new(result))
     }
 
@@ -57,7 +57,7 @@ impl Matrix {
                 self.row_count(),
                 self.col_count(),
                 other.len()
-                );
+            );
             return Err("Matrix and vector dimensions do not match for multiplication");
         }
 
@@ -66,7 +66,7 @@ impl Matrix {
             let dot_product = row.dot(other);
             result.push(dot_product);
         }
-        Ok(Vector::new(result)) 
+        Ok(Vector::new(result))
     }
 
     pub fn add(&self, other: &Matrix) -> Result<Matrix, &'static str> {
@@ -81,7 +81,12 @@ impl Matrix {
             return Err("Matrix dimensions do not match for addition");
         }
 
-        let rows: Vec<Vector> = self.rows.iter().zip(&other.rows).map(|(a, b)| a.add(b)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(a, b)| a.add(b))
+            .collect();
         Ok(Matrix::new(rows))
     }
 
@@ -95,12 +100,21 @@ impl Matrix {
             return Err("Matrix dimensions do not match for subtraction");
         }
 
-        let rows: Vec<Vector> = self.rows.iter().zip(&other.rows).map(|(a, b)| a.subtract(b)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(a, b)| a.subtract(b))
+            .collect();
         Ok(Matrix::new(rows))
     }
 
     pub fn scalar_multiply(&self, scalar: f32) -> Matrix {
-        let rows: Vec<Vector> = self.rows.iter().map(|r| r.scalar_multiply(scalar)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .map(|r| r.scalar_multiply(scalar))
+            .collect();
         Matrix::new(rows)
     }
 
@@ -109,7 +123,12 @@ impl Matrix {
             return Err("Matrix dimensions do not match for element-wise multiplication");
         }
 
-        let rows: Vec<Vector> = self.rows.iter().zip(&other.rows).map(|(a, b)| a.elementwise_multiply(b)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(a, b)| a.elementwise_multiply(b))
+            .collect();
         Ok(Matrix::new(rows))
     }
 
@@ -118,7 +137,12 @@ impl Matrix {
             return Err("Matrix dimensions do not match for element-wise division");
         }
 
-        let rows: Vec<Vector> = self.rows.iter().zip(&other.rows).map(|(a, b)| a.elementwise_divide(b)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(a, b)| a.elementwise_divide(b))
+            .collect();
         Ok(Matrix::new(rows))
     }
 
@@ -131,13 +155,13 @@ impl Matrix {
         let row_count = self.row_count();
         let col_count = self.col_count();
         let mut transposed = vec![vec![0.0; row_count]; col_count];
-        
+
         for i in 0..row_count {
             for j in 0..col_count {
                 transposed[j][i] = self.rows[i].elements[j];
             }
         }
-        
+
         Matrix::new(transposed.into_iter().map(Vector::new).collect())
     }
 
@@ -215,16 +239,30 @@ impl Matrix {
     }
 
     pub fn map_with_index(&self, f: impl Fn(f32, usize) -> f32) -> Matrix {
-        let rows: Vec<Vector> = self.rows.iter().enumerate().map(|(i, r)| r.map_with_index(|e, j| f(e, j))).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| r.map_with_index(|e, j| f(e, j)))
+            .collect();
         Matrix::new(rows)
     }
 
-    pub fn map_with_matrix(&self, other: &Matrix, f: impl Fn(f32, f32) -> f32) -> Result<Matrix, &'static str> {
+    pub fn map_with_matrix(
+        &self,
+        other: &Matrix,
+        f: impl Fn(f32, f32) -> f32,
+    ) -> Result<Matrix, &'static str> {
         if self.row_count() != other.row_count() || self.col_count() != other.col_count() {
             return Err("Matrix dimensions do not match for element-wise mapping");
         }
 
-        let rows: Vec<Vector> = self.rows.iter().zip(&other.rows).map(|(a, b)| a.map_with_vector(b, &f)).collect();
+        let rows: Vec<Vector> = self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(a, b)| a.map_with_vector(b, &f))
+            .collect();
         Ok(Matrix::new(rows))
     }
 
@@ -235,13 +273,13 @@ impl Matrix {
     pub fn sum_cols(&self) -> Vector {
         let col_count = self.col_count();
         let mut result = vec![0.0; col_count];
-        
+
         for row in &self.rows {
             for (i, &e) in row.elements.iter().enumerate() {
                 result[i] += e;
             }
         }
-        
+
         Vector::new(result)
     }
 
@@ -254,11 +292,13 @@ impl Matrix {
     }
 
     pub fn mean_cols(&self) -> Vector {
-        self.sum_cols().scalar_multiply(1.0 / self.row_count() as f32)
+        self.sum_cols()
+            .scalar_multiply(1.0 / self.row_count() as f32)
     }
 
     pub fn mean_rows(&self) -> Vector {
-        self.sum_rows().scalar_multiply(1.0 / self.col_count() as f32)
+        self.sum_rows()
+            .scalar_multiply(1.0 / self.col_count() as f32)
     }
 
     pub fn to_string(&self) -> String {
@@ -275,7 +315,8 @@ impl Matrix {
 
     pub fn load(path: &str) -> Result<Matrix, std::io::Error> {
         let contents = fs::read_to_string(path)?;
-        Matrix::from_string(&contents).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        Matrix::from_string(&contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     pub fn iter(&self) -> Iter<Vector> {
@@ -307,7 +348,12 @@ impl Matrix {
             return Err("Matrix dimensions do not match for dot product");
         }
 
-        Ok(self.rows.iter().zip(&other.rows).map(|(row, other_row)| row.dot(other_row)).sum())
+        Ok(self
+            .rows
+            .iter()
+            .zip(&other.rows)
+            .map(|(row, other_row)| row.dot(other_row))
+            .sum())
     }
 
     pub fn shape(&self) -> (usize, usize) {
@@ -323,7 +369,9 @@ impl Matrix {
     }
 
     pub fn cols(&self) -> Vec<Vector> {
-        (0..self.col_count()).map(|i| self.get_col(i).unwrap()).collect()
+        (0..self.col_count())
+            .map(|i| self.get_col(i).unwrap())
+            .collect()
     }
 
     pub fn zeros(row_count: usize, col_count: usize) -> Matrix {

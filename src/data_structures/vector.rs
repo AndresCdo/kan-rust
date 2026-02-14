@@ -1,7 +1,7 @@
-use std::ops::{MulAssign, Sub};
 use crate::data_structures::Matrix;
-use serde::{Deserialize, Serialize};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::ops::{MulAssign, Sub};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Vector {
@@ -13,7 +13,11 @@ impl Sub for Vector {
 
     fn sub(self, other: Vector) -> Vector {
         Vector::new(
-            self.elements.iter().zip(other.elements).map(|(a, b)| a - b).collect()
+            self.elements
+                .iter()
+                .zip(other.elements)
+                .map(|(a, b)| a - b)
+                .collect(),
         )
     }
 }
@@ -26,7 +30,10 @@ impl MulAssign<f32> for Vector {
 
 impl MulAssign for Vector {
     fn mul_assign(&mut self, other: Vector) {
-        self.elements.iter_mut().zip(other.elements).for_each(|(a, b)| *a *= b);
+        self.elements
+            .iter_mut()
+            .zip(other.elements)
+            .for_each(|(a, b)| *a *= b);
     }
 }
 
@@ -43,7 +50,11 @@ impl Vector {
         if self.len() != other.len() {
             panic!("Vectors must have the same length for dot product");
         }
-        self.elements.iter().zip(&other.elements).map(|(a, b)| a * b).sum()
+        self.elements
+            .iter()
+            .zip(&other.elements)
+            .map(|(a, b)| a * b)
+            .sum()
     }
 
     pub fn cross(&self, other: &Vector) -> Vector {
@@ -54,11 +65,13 @@ impl Vector {
 
         let mut result = Vec::with_capacity(self.len());
         for i in 0..self.len() {
-            result.push(self.elements[(i + 1) % self.len()] * other.elements[(i + 2) % self.len()] - self.elements[(i + 2) % self.len()] * other.elements[(i + 1) % self.len()]);
+            result.push(
+                self.elements[(i + 1) % self.len()] * other.elements[(i + 2) % self.len()]
+                    - self.elements[(i + 2) % self.len()] * other.elements[(i + 1) % self.len()],
+            );
         }
         Vector::new(result)
     }
-
 
     pub fn outer_product(&self, other: &Self) -> Matrix {
         let mut matrix = Matrix::new(vec![]);
@@ -104,7 +117,11 @@ impl Vector {
 
     pub fn add(&self, other: &Vector) -> Vector {
         Vector::new(
-            self.elements.iter().zip(&other.elements).map(|(a, b)| a + b).collect()
+            self.elements
+                .iter()
+                .zip(&other.elements)
+                .map(|(a, b)| a + b)
+                .collect(),
         )
     }
 
@@ -121,20 +138,34 @@ impl Vector {
             panic!("Vectors must have the same length for subtraction");
         }
         Vector::new(
-            self.elements.iter().zip(&other.elements).map(|(a, b)| a - b).collect()
+            self.elements
+                .iter()
+                .zip(&other.elements)
+                .map(|(a, b)| a - b)
+                .collect(),
         )
     }
 
     pub fn elementwise_multiply(&self, other: &Vector) -> Vector {
         // round  to 2 decimal places
         Vector::new(
-            self.elements.iter().zip(&other.elements).map(|(a, b)| (a * b)).collect()
+            self.elements
+                .iter()
+                .zip(&other.elements)
+                .map(|(a, b)| (a * b))
+                .collect(),
         )
     }
 
     pub fn elementwise_divide(&self, other: &Vector) -> Vector {
         // Round to 2 decimal places
-        let elements = self.elements.iter().zip(&other.elements).map(|(a, b)| (a / b) * 10.0).map(|x| x.round() / 10.0).collect();
+        let elements = self
+            .elements
+            .iter()
+            .zip(&other.elements)
+            .map(|(a, b)| (a / b) * 10.0)
+            .map(|x| x.round() / 10.0)
+            .collect();
         Vector::new(elements)
     }
 
@@ -151,11 +182,17 @@ impl Vector {
     }
 
     pub fn sigmoid(&self) -> Vector {
-        Vector::new(self.elements.iter().map(|&x| 1.0 / (1.0 + (-x).exp())).collect())
+        Vector::new(
+            self.elements
+                .iter()
+                .map(|&x| 1.0 / (1.0 + (-x).exp()))
+                .collect(),
+        )
     }
 
     pub fn sigmoid_derivative(&self) -> Vector {
-        self.sigmoid().elementwise_multiply(&self.scalar_multiply(-1.0).add_scalar(1.0))
+        self.sigmoid()
+            .elementwise_multiply(&self.scalar_multiply(-1.0).add_scalar(1.0))
     }
 
     pub fn relu(&self) -> Vector {
@@ -163,7 +200,12 @@ impl Vector {
     }
 
     pub fn relu_derivative(&self) -> Vector {
-        Vector::new(self.elements.iter().map(|&x| if x > 0.0 { 1.0 } else { 0.0 }).collect())
+        Vector::new(
+            self.elements
+                .iter()
+                .map(|&x| if x > 0.0 { 1.0 } else { 0.0 })
+                .collect(),
+        )
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
@@ -193,18 +235,37 @@ impl Vector {
     }
 
     pub fn map_with_index(&self, f: impl Fn(f32, usize) -> f32) -> Vector {
-        Vector::new(self.elements.iter().enumerate().map(|(i, &x)| f(x, i)).collect())
+        Vector::new(
+            self.elements
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| f(x, i))
+                .collect(),
+        )
     }
 
     pub fn map_with_vector(&self, other: &Vector, f: impl Fn(f32, f32) -> f32) -> Vector {
         Vector::new(
-            self.elements.iter().zip(&other.elements).map(|(&a, &b)| f(a, b)).collect()
+            self.elements
+                .iter()
+                .zip(&other.elements)
+                .map(|(&a, &b)| f(a, b))
+                .collect(),
         )
     }
 
-    pub fn map_with_vector_index(&self, other: &Vector, f: impl Fn(f32, f32, usize) -> f32) -> Vector {
+    pub fn map_with_vector_index(
+        &self,
+        other: &Vector,
+        f: impl Fn(f32, f32, usize) -> f32,
+    ) -> Vector {
         Vector::new(
-            self.elements.iter().zip(&other.elements).enumerate().map(|(i, (&a, &b))| f(a, b, i)).collect()
+            self.elements
+                .iter()
+                .zip(&other.elements)
+                .enumerate()
+                .map(|(i, (&a, &b))| f(a, b, i))
+                .collect(),
         )
     }
 
