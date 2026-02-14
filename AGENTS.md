@@ -1,61 +1,61 @@
-# AGENTS.md - Documentación para Agentes IA
+# AGENTS.md - Documentation for AI Agents
 
-Este archivo contiene instrucciones para agentes IA que trabajan en este proyecto.
+This file contains instructions for AI agents working on this project.
 
-## Información del Proyecto
+## Project Information
 
-- **Nombre**: KAN (Kolmogorov-Arnold Networks) Rust Implementation
-- **Lenguaje**: Rust
-- **Tipo**: Librería + Binario
-- **Repositorio**: https://github.com/AndresCdo/kan-rust
+- **Name**: KAN (Kolmogorov-Arnold Networks) Rust Implementation
+- **Language**: Rust
+- **Type**: Library + Binary
+- **Repository**: https://github.com/AndresCdo/kan-rust
 
-## Estructura del Proyecto
+## Project Structure
 
 ```
 kan-rust/
 ├── src/
-│   ├── bin/kan.rs           # Punto de entrada binario
-│   ├── data_structures/     # Estructuras de datos core
-│   │   ├── vector.rs        # Operaciones vectoriales
-│   │   ├── matrix.rs       # Operaciones matriciales
-│   │   ├── layer.rs        # Capa MLP (legacy)
-│   │   └── spline.rs       # Implementación B-spline
-│   ├── network/             # Implementaciones de redes
-│   │   ├── network.rs      # Red MLP (legacy)
-│   │   └── kan.rs          # Implementación KAN ✓
-│   ├── utils/              # Utilidades
-│   └── tests/              # Tests unitarios
+│   ├── bin/kan.rs           # Binary entry point
+│   ├── data_structures/     # Core data structures
+│   │   ├── vector.rs       # Vector operations
+│   │   ├── matrix.rs      # Matrix operations
+│   │   ├── layer.rs       # MLP layer (legacy)
+│   │   └── spline.rs      # B-spline implementation
+│   ├── network/            # Network implementations
+│   │   ├── network.rs     # MLP network (legacy)
+│   │   └── kan.rs         # KAN implementation ✓
+│   ├── utils/             # Utilities
+│   └── tests/             # Unit tests
 ├── docs/
-│   └── TECHNICAL.md        # Documentación técnica
+│   └── TECHNICAL.md       # Technical documentation
 ├── Cargo.toml
 └── README.md
 ```
 
-## Comandos de Desarrollo
+## Development Commands
 
-### Compilación
+### Compilation
 
 ```bash
-# Desarrollo
+# Development
 cargo build
 
 # Release
 cargo build --release
 
-# Verificar sin compilar
+# Verify without compiling
 cargo check
 ```
 
 ### Testing
 
 ```bash
-# Todos los tests
+# All tests
 cargo test
 
-# Tests de librería
+# Library tests
 cargo test --lib
 
-# Tests con output
+# Tests with output
 cargo test -- --nocapture
 
 # Coverage
@@ -65,34 +65,34 @@ cargo tarpaulin
 ### Linting
 
 ```bash
-# Fix automático
+# Auto-fix
 cargo fix
 
 # Clippy
 cargo clippy -- -D warnings
 ```
 
-### Documentación
+### Documentation
 
 ```bash
-# Generar docs
+# Generate docs
 cargo doc --open
 
-# Docs sin abrir
+# Generate docs without opening
 cargo doc
 ```
 
-## Arquitectura KAN
+## KAN Architecture
 
-El proyecto implementa **Kolmogorov-Arnold Networks** según el paper:
+The project implements **Kolmogorov-Arnold Networks** according to the paper:
 
 - **Paper**: [KAN: Kolmogorov-Arnold Networks](https://arxiv.org/html/2404.19756v5)
-- **Repo original Python**: https://github.com/KindXiaoming/pykan
+- **Original Python Repo**: https://github.com/KindXiaoming/pykan
 
-### Características Implementadas
+### Implemented Features
 
-| Feature | Estado | Archivo |
-|---------|--------|---------|
+| Feature | Status | File |
+|---------|--------|------|
 | B-spline activation | ✅ | `spline.rs` |
 | SiLU base function | ✅ | `spline.rs` |
 | Forward propagation | ✅ | `kan.rs` |
@@ -103,9 +103,9 @@ El proyecto implementa **Kolmogorov-Arnold Networks** según el paper:
 | Node pruning | ✅ | `kan.rs` |
 | Symbolic fixing | 🔄 | placeholder |
 
-## API Principal
+## Main API
 
-### Crear KAN
+### Create KAN
 
 ```rust
 use kan::network::kan::create_kan;
@@ -120,38 +120,38 @@ let input = vec![0.5, 0.3];
 let output = kan.forward(&input);
 ```
 
-### Entrenamiento
+### Training
 
 ```rust
 kan.train(&inputs, &targets, epochs, learning_rate);
 ```
 
-### Pérdidas
+### Loss Functions
 
 ```rust
 let mse = kan.mse_loss(&inputs, &targets);
-let total = kan.total_loss(&inputs, &targets); // con regularización
+let total = kan.total_loss(&inputs, &targets); // with regularization
 ```
 
-## Estándares de Código
+## Code Standards
 
 - Rust 2021 edition
-- Warnings como errores en CI
-- Tests unitarios para nuevas features
-- Documentación para funciones públicas
-- Nombres en snake_case
-- Types concretos preferidos a inferencia
+- Warnings as errors in CI
+- Unit tests for new features
+- Documentation for public functions
+- snake_case naming
+- Concrete types preferred over inference
 
 ## Testing Requirements
 
-Antes de commit:
+Before commit:
 
-1. `cargo test` debe pasar
-2. `cargo clippy` sin warnings
-3. `cargo fmt` formateado
-4. Documentación actualizada si hay cambios API
+1. `cargo test` must pass
+2. `cargo clippy` without warnings
+3. `cargo fmt` formatted
+4. Documentation updated if API changes
 
-## Dependencias
+## Dependencies
 
 ```toml
 [dependencies]
@@ -162,10 +162,10 @@ indicatif = "0.15"
 ctrlc = "3.1"
 ```
 
-## Notas para Agentes
+## Notes for Agents
 
-- El código legacy (MLP) está en `layer.rs` y `network.rs`
-- La nueva implementación KAN está en `spline.rs` y `kan.rs`
-- Los tests están en los módulos mismos (inline con `#[cfg(test)]`)
-- Hay warnings de lifetime en `matrix.rs` que necesitan fix
-- La implementación de backpropagation en KAN es parcial (solo primera capa)
+- Legacy code (MLP) is in `layer.rs` and `network.rs`
+- New KAN implementation is in `spline.rs` and `kan.rs`
+- Tests are in the modules themselves (inline with `#[cfg(test)]`)
+- There are lifetime warnings in `matrix.rs` that need fixing
+- KAN backpropagation implementation is partial (first layer only)

@@ -24,8 +24,8 @@ Input Layer (n0)
     ▼
 ┌─────────────────────┐
 │  KAN Layer 0: Φ₀    │
-│  [n₀ × n₁] funciones│
-│  univariadas        │
+│  [n₀ × n₁] univariate│
+│  functions          │
 └─────────────────────┘
     │
     ▼
@@ -41,7 +41,7 @@ Input Layer (n0)
     ▼
 Output Layer (n_L)
 
-Cada función: ϕ(x) = w_b·SiLU(x) + w_s·spline(x)
+Each function: ϕ(x) = w_b·SiLU(x) + w_s·spline(x)
 ```
 
 ## Project Structure
