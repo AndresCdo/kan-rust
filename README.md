@@ -1,70 +1,32 @@
-# Kolmogorov–Arnold Network (KAN) in Rust
+# KAN in Rust
 
-This project is a Rust implementation of a **Kolmogorov–Arnold Network (KAN)** neural network, based on the paper ["KAN: Kolmogorov-Arnold Networks"](https://arxiv.org/html/2404.19756v5) by Ziming Liu et al.
+`kan` is a correctness-first Rust implementation of a fixed-grid
+Kolmogorov-Arnold Network (KAN). Version 0.2.0 deliberately establishes a
+small, validated core before reintroducing advanced KAN features.
 
-## Description
+## What 0.2.0 provides
 
-KAN is a promising alternative to Multi-Layer Perceptrons (MLPs). Unlike MLPs that have fixed activation functions on nodes, KANs have **learnable activation functions on edges** (weights), parameterized as B-splines.
+- Degree-three B-spline edge activations on exterior-extended uniform knots.
+- Full reverse-mode gradients through every KAN layer.
+- SGD updates for spline coefficients, base weights, and spline weights.
+- Deterministic initialization from an explicit seed.
+- Fallible shape, batch, finite-value, and JSON validation.
+- Versioned JSON persistence with inference round trips.
 
-### Key Features
+The layer operation follows the KAN paper:
 
-- **Learnable activation functions** on edges instead of fixed activations on nodes
-- **B-spline parametrization** for univariate functions (order k=3 by default)
-- **No linear weight matrices** - every parameter is a learnable 1D function
-- **Grid extension** for incremental accuracy improvement
-- **Regularization** (L1 + entropy) for network simplification
-- **Pruning** for interpretability
-- **Symbolic fixing** for formula discovery
-
-### Architecture
-
-```
-Input Layer (n0)
-    │
-    ▼
-┌─────────────────────┐
-│  KAN Layer 0: Φ₀    │
-│  [n₀ × n₁] univariate│
-│  functions          │
-└─────────────────────┘
-    │
-    ▼
-┌─────────────────────┐
-│  KAN Layer 1: Φ₁    │
-└─────────────────────┘
-    │ ... │
-    ▼
-┌─────────────────────┐
-│  KAN Layer L-1      │
-└─────────────────────┘
-    │
-    ▼
-Output Layer (n_L)
-
-Each function: ϕ(x) = w_b·SiLU(x) + w_s·spline(x)
+```text
+x[l + 1][j] = sum_i phi[l][j][i](x[l][i])
+phi(x) = base_weight * SiLU(x) + spline_weight * sum_r coefficient[r] * B[r, 3](x)
 ```
 
-## Project Structure
-
-```
-kan-rust/
-├── src/
-│   ├── bin/kan.rs           # Binary entry point
-│   ├── data_structures/     # Core data structures
-│   │   ├── vector.rs        # Vector operations
-│   │   ├── matrix.rs        # Matrix operations
-│   │   ├── layer.rs         # MLP layer (legacy)
-│   │   └── spline.rs        # B-spline implementation
-│   ├── network/             # Network implementations
-│   │   ├── network.rs       # MLP network (legacy)
-│   │   └── kan.rs           # KAN implementation ✓
-│   ├── utils/               # Utility functions
-│   └── tests/               # Unit tests
-├── Cargo.toml
-└── README.md
-```
+For `G` grid intervals on `[a, b]`, the core uses degree `p = 3`, `G + 3`
+coefficients, and `G + 7` exterior-extended uniform knots. The paper and
+pykan call `p` an "order"; this crate uses the conventional term **degree**.
 
 ## Installation
+
+Build this checkout:
 
 ```bash
 cargo build
@@ -72,106 +34,80 @@ cargo build
 
 ## Usage
 
-### Basic Example
-
 ```rust
-use kan::network::kan::create_kan;
+use kan::network::{Kan, KanConfig, KanError};
 
-fn main() {
-    // Create a KAN with shape [2, 5, 1]
-    let mut kan = create_kan(&[2, 5, 1], 3); // 3 = grid_size
-    
-    // Training data
-    let inputs = vec![
-        vec![0.1, 0.2],
-        vec![0.3, 0.4],
-        vec![0.5, 0.6],
-    ];
-    let targets = vec![
-        vec![0.3],
-        vec![0.7],
-        vec![1.1],
-    ];
-    
-    // Train
-    kan.train(&inputs, &targets, 100, 0.01);
-    
-    // Predict
-    let input = vec![0.1, 0.2];
-    let output = kan.forward(&input);
-    println!("Output: {:?}", output);
+fn main() -> Result<(), KanError> {
+    let config = KanConfig::new(vec![2, 5, 1], 3)?.with_seed(7);
+    let mut model = Kan::try_new(config)?;
+
+    let inputs = vec![vec![0.1, 0.2], vec![0.3, 0.4]];
+    let targets = vec![vec![0.3], vec![0.7]];
+
+    model.train(&inputs, &targets, 100, 0.03)?;
+    let prediction = model.forward(&[0.1, 0.2])?;
+    println!("{prediction:?}");
+    Ok(())
 }
 ```
 
-### Advanced: Grid Extension
+All public KAN operations validate their inputs and return `Result`.
+To keep construction and loading bounded, P0 accepts at most 250,000 trainable
+parameters and 8 MiB of serialized JSON source state. CLI inspection accepts
+regular files only and retains an in-band bounded read.
+
+## Persistence
 
 ```rust
-// Extend grid from G=3 to G=10 for more accuracy
-kan.grid_extend(10);
+use kan::network::{Kan, KanConfig, KanError};
+
+fn round_trip() -> Result<(), KanError> {
+    let model = Kan::try_new(KanConfig::new(vec![2, 1], 3)?)?;
+    let encoded = model.to_json()?;
+    let restored = Kan::from_json(&encoded)?;
+    assert_eq!(restored.shape(), &[2, 1]);
+    Ok(())
+}
 ```
 
-### Advanced: Pruning
+Only the versioned `kan-rust` v1 format is supported. Unversioned 0.1 KAN
+JSON is rejected because its spline semantics were not canonical and cannot be
+faithfully migrated.
 
-```rust
-// Remove connections with magnitude < 0.01
-kan.prune(0.01);
-```
-
-## Mathematical Foundation
-
-Based on the **Kolmogorov-Arnold Representation Theorem**:
-
-$$f(x) = \sum_{q=1}^{2n+1} \Phi_q \left( \sum_{p=1}^{n} \phi_{q,p}(x_p) \right)$$
-
-Each function $\phi_{q,p}$ is parameterized as a B-spline:
-
-$$\phi(x) = w_b \cdot \text{SiLU}(x) + w_s \cdot \sum_i c_i B_i(x)$$
-
-### Scaling Law
-
-With B-splines of order k=3 (cubic), the approximation error scales as:
-
-$$\text{RMSE} \propto G^{-(k+1)} = G^{-4}$$
-
-## How to Run
+## Binary demo
 
 ```bash
-cargo run
+cargo run -- model.json
+cargo run -- inspect model.json
 ```
 
-## How to Test
+The first command trains a deterministic `[2, 5, 1]` KAN and writes validated
+JSON to the given path. The second validates and summarizes an existing model.
+
+## Deliberately deferred
+
+These features are **not implemented in 0.2.0**: regularization, adaptive grid
+refinement, pruning, and symbolic fitting. They depend on the fixed-grid core
+and are planned as separately validated follow-up work.
+
+The older MLP, vector, and matrix APIs remain legacy compatibility code; they
+are not part of the KAN correctness guarantee and will be handled separately.
+
+## Verification
 
 ```bash
-cargo test
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --all-targets
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
-
-## Implemented Features
-
-| Feature | Status |
-|---------|--------|
-| B-spline activation functions | ✅ |
-| SiLU base function | ✅ |
-| Forward propagation | ✅ |
-| Backpropagation | ✅ |
-| Grid extension | ✅ |
-| L1 regularization | ✅ |
-| Entropy regularization | ✅ |
-| Node pruning | ✅ |
-| Symbolic fixing | 🔄 (placeholder) |
 
 ## References
 
-- [KAN: Kolmogorov-Arnold Networks](https://arxiv.org/html/2404.19756v5) - Original paper
-- [pykan](https://github.com/KindXiaoming/pykan) - Python implementation
+- [KAN: Kolmogorov-Arnold Networks](https://arxiv.org/html/2404.19756v5)
+- [pykan reference implementation](https://github.com/KindXiaoming/pykan)
+- [SciPy B-spline reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.BSpline.html)
 
 ## License
 
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
-
-## Author
-
-[Andres Caicedo](https://github.com/AndresCdo)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests or open issues.
+[MIT](LICENSE)

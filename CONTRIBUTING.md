@@ -48,11 +48,11 @@ We welcome pull requests (PRs)! To submit a PR:
 Please ensure that your code adheres to the following style guidelines:
 - **Rustfmt**: Use `rustfmt` to format your code. This can be done by running:
     ```sh
-    cargo fmt
+    cargo fmt --all -- --check
     ```
 - **Clippy**: Use `clippy` to catch common mistakes and improve code quality. Run:
     ```sh
-    cargo clippy
+    cargo clippy --locked --all-targets -- -D warnings
     ```
 - **Documentation**: Add comments and documentation to your code where appropriate, especially for public APIs.
 
@@ -62,7 +62,11 @@ Ensure that your changes are well-tested:
 - Write unit tests for new features or bug fixes.
 - Run all tests to ensure they pass:
     ```sh
-    cargo test
+    cargo test --locked --all-targets
+    ```
+- Build public documentation with warnings denied:
+    ```sh
+    RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
     ```
 
 ## Code of Conduct

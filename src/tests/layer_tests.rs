@@ -1,4 +1,3 @@
-
 use crate::data_structures::{Layer, Matrix, Vector};
 
 #[test]

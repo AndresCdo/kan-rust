@@ -49,8 +49,8 @@ cargo check
 ### Testing
 
 ```bash
-# All tests
-cargo test
+# All targets
+cargo test --locked --all-targets
 
 # Library tests
 cargo test --lib
@@ -69,7 +69,10 @@ cargo tarpaulin
 cargo fix
 
 # Clippy
-cargo clippy -- -D warnings
+cargo clippy --locked --all-targets -- -D warnings
+
+# Formatting gate
+cargo fmt --all -- --check
 ```
 
 ### Documentation
@@ -78,8 +81,8 @@ cargo clippy -- -D warnings
 # Generate docs
 cargo doc --open
 
-# Generate docs without opening
-cargo doc
+# Generate docs with warnings denied
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
 ## KAN Architecture
@@ -96,41 +99,42 @@ The project implements **Kolmogorov-Arnold Networks** according to the paper:
 | B-spline activation | ✅ | `spline.rs` |
 | SiLU base function | ✅ | `spline.rs` |
 | Forward propagation | ✅ | `kan.rs` |
-| Backpropagation | ✅ | `kan.rs` |
-| Grid extension | ✅ | `kan.rs` |
-| L1 regularization | ✅ | `kan.rs` |
-| Entropy regularization | ✅ | `kan.rs` |
-| Node pruning | ✅ | `kan.rs` |
-| Symbolic fixing | 🔄 | placeholder |
+| Full multilayer backpropagation | ✅ | `kan.rs` |
+| Deterministic initialization | ✅ | `kan.rs` |
+| Versioned validated persistence | ✅ | `kan.rs` |
+| Grid extension | Deferred | — |
+| L1/entropy regularization | Deferred | — |
+| Node pruning | Deferred | — |
+| Symbolic fixing | Deferred | — |
 
 ## Main API
 
-### Create KAN
+### Create a validated KAN
 
 ```rust
-use kan::network::kan::create_kan;
+use kan::network::{Kan, KanConfig};
 
-let kan = create_kan(&[2, 5, 1], 3); // shape, grid_size
+let config = KanConfig::new(vec![2, 5, 1], 3)?.with_seed(7);
+let mut kan = Kan::try_new(config)?;
 ```
 
 ### Forward Pass
 
 ```rust
 let input = vec![0.5, 0.3];
-let output = kan.forward(&input);
+let output = kan.forward(&input)?;
 ```
 
 ### Training
 
 ```rust
-kan.train(&inputs, &targets, epochs, learning_rate);
+kan.train(&inputs, &targets, epochs, learning_rate)?;
 ```
 
 ### Loss Functions
 
 ```rust
-let mse = kan.mse_loss(&inputs, &targets);
-let total = kan.total_loss(&inputs, &targets); // with regularization
+let mse = kan.mse_loss(&inputs, &targets)?;
 ```
 
 ## Code Standards
@@ -157,15 +161,16 @@ Before commit:
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rand = "0.8"
-indicatif = "0.15"
-ctrlc = "3.1"
+thiserror = "2.0"
+rand = "0.8.6"
+indicatif = "0.18"
 ```
 
 ## Notes for Agents
 
 - Legacy code (MLP) is in `layer.rs` and `network.rs`
 - New KAN implementation is in `spline.rs` and `kan.rs`
-- Tests are in the modules themselves (inline with `#[cfg(test)]`)
-- There are lifetime warnings in `matrix.rs` that need fixing
-- KAN backpropagation implementation is partial (first layer only)
+- KAN mathematical tests are inline; public contract tests are in `tests/kan_core.rs`.
+- KAN fields are intentionally private; persisted models must pass `Kan::from_json` validation.
+- The legacy MLP/vector/matrix surface is outside the 0.2.0 KAN correctness guarantee.
+- Regularization, grid refinement, pruning, and symbolic fitting require separate designs and tests before reintroduction.

@@ -89,14 +89,16 @@ impl Network {
 
     pub fn train(&mut self, inputs: Vector, targets: Vector, epochs: usize) {
         // Setup progress bar with custom style
-        let progress_bar = ProgressBar::new(epochs as u64).with_style(
+        let progress_style = ProgressStyle::with_template(
+            "{spinner} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}",
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("invalid built-in progress template: {error}");
             ProgressStyle::default_bar()
-                .template(
-                    "{spinner} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}",
-                )
-                .tick_chars("⣾⣽⣻⢿⡿⣟⣯⣷")
-                .progress_chars("#>-"),
-        );
+        })
+        .tick_chars("⣾⣽⣻⢿⡿⣟⣯⣷")
+        .progress_chars("#>-");
+        let progress_bar = ProgressBar::new(epochs as u64).with_style(progress_style);
 
         progress_bar.set_message("Training...");
 
@@ -115,7 +117,7 @@ impl Network {
             // println!("Epoch {}: Accuracy = {}", epoch + 1, total_accuracy / inputs.len() as f32);
 
             progress_bar.inc(1);
-            progress_bar.set_message(&format!(
+            progress_bar.set_message(format!(
                 "Epoch {}: Loss = {}, Accuracy = {}",
                 epoch + 1,
                 total_loss / inputs.len() as f32,
