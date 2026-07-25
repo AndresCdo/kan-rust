@@ -1,358 +1,232 @@
-use rand::Rng;
-use serde::{Deserialize, Serialize};
+//! Internal cubic B-spline primitives used by the validated KAN implementation.
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SplineLayer {
-    pub input_size: usize,
-    pub output_size: usize,
-    pub grid_size: usize,
-    pub spline_order: usize,
-    pub base_weight: Vec<Vec<f32>>,
-    pub spline_weight: Vec<Vec<f32>>,
-    pub spline_coeffs: Vec<Vec<Vec<f32>>>,
-    pub grid_min: f32,
-    pub grid_max: f32,
+/// The fixed polynomial degree used by the P0 KAN model.
+pub(crate) const SPLINE_DEGREE: usize = 3;
+
+#[derive(Clone, Debug)]
+pub(crate) struct SplineActivation {
+    pub(crate) coefficients: Vec<f32>,
+    pub(crate) base_weight: f32,
+    pub(crate) spline_weight: f32,
+    grid_intervals: usize,
+    domain: [f32; 2],
 }
 
-impl SplineLayer {
-    pub fn new(input_size: usize, output_size: usize, grid_size: usize) -> Self {
-        let spline_order = 3;
-        let grid_min = -1.0;
-        let grid_max = 1.0;
-
-        let mut rng = rand::thread_rng();
-
-        let mut base_weight = Vec::new();
-        let mut spline_weight = Vec::new();
-        let mut spline_coeffs = Vec::new();
-
-        for _ in 0..output_size {
-            let mut row_base = Vec::new();
-            let mut row_spline = Vec::new();
-            let mut row_coeffs = Vec::new();
-
-            for _ in 0..input_size {
-                row_base.push(0.0);
-                row_spline.push(1.0);
-
-                let mut coeffs = Vec::new();
-                for _ in 0..(grid_size + spline_order) {
-                    coeffs.push(rng.gen_range(-0.1..0.1));
-                }
-                row_coeffs.push(coeffs);
-            }
-
-            base_weight.push(row_base);
-            spline_weight.push(row_spline);
-            spline_coeffs.push(row_coeffs);
-        }
-
-        SplineLayer {
-            input_size,
-            output_size,
-            grid_size,
-            spline_order,
-            base_weight,
-            spline_weight,
-            spline_coeffs,
-            grid_min,
-            grid_max,
-        }
-    }
-
-    pub fn silu(x: f32) -> f32 {
-        x / (1.0 + (-x).exp())
-    }
-
-    pub fn silu_derivative(x: f32) -> f32 {
-        let sig = 1.0 / (1.0 + (-x).exp());
-        sig * (1.0 + x * (1.0 - sig))
-    }
-
-    pub fn evaluate_spline(&self, coeffs: &[f32], x: f32) -> f32 {
-        if x < self.grid_min || x > self.grid_max {
-            let scale = if x < self.grid_min {
-                coeffs.first().copied().unwrap_or(0.0)
-            } else {
-                coeffs.last().copied().unwrap_or(0.0)
-            };
-            return scale;
-        }
-
-        let total_intervals = self.grid_size;
-        let interval_width = (self.grid_max - self.grid_min) / total_intervals as f32;
-
-        let scaled_x = (x - self.grid_min) / interval_width;
-        let mut spline_idx = scaled_x.floor() as usize;
-        spline_idx = spline_idx.min(total_intervals - 1);
-
-        let t = scaled_x - spline_idx as f32;
-
-        let coeffs_for_interval = &coeffs[spline_idx..spline_idx + self.spline_order + 1];
-
-        if coeffs_for_interval.len() < self.spline_order + 1 {
-            return coeffs.last().copied().unwrap_or(0.0);
-        }
-
-        self.evaluate_bspline(coeffs_for_interval, t)
-    }
-
-    fn evaluate_bspline(&self, coeffs: &[f32], t: f32) -> f32 {
-        let k = self.spline_order;
-        let n = coeffs.len() - 1;
-
-        if k == 0 {
-            return coeffs[n.min(coeffs.len() - 1)];
-        }
-
-        let mut temp = coeffs.to_vec();
-
-        for p in 1..=k {
-            for i in 0..(n - p + 1) {
-                let alpha = t / (p as f32);
-                temp[i] = (1.0 - alpha) * temp[i] + alpha * temp[i + 1];
-            }
-        }
-
-        temp[0]
-    }
-
-    pub fn spline_derivative(&self, coeffs: &[f32], x: f32) -> f32 {
-        let k = self.spline_order;
-
-        if k == 0 {
-            return 0.0;
-        }
-
-        let mut deriv_coeffs = Vec::new();
-        for i in 0..(coeffs.len() - 1) {
-            deriv_coeffs.push((coeffs[i + 1] - coeffs[i]) * k as f32);
-        }
-
-        let total_intervals = self.grid_size;
-        let interval_width = (self.grid_max - self.grid_min) / total_intervals as f32;
-
-        let scaled_x = (x - self.grid_min) / interval_width;
-        let mut spline_idx = scaled_x.floor() as usize;
-        spline_idx = spline_idx.min(total_intervals - 1);
-
-        let t = scaled_x - spline_idx as f32;
-
-        if deriv_coeffs.is_empty() {
-            return 0.0;
-        }
-
-        let coeffs_for_interval = &deriv_coeffs[spline_idx
-            ..spline_idx
-                .saturating_sub(1)
-                .max(0)
-                .min(deriv_coeffs.len().saturating_sub(1))];
-
-        self.evaluate_bspline(coeffs_for_interval, t) / interval_width
-    }
-
-    pub fn forward(&self, input: &[f32]) -> Vec<f32> {
-        let mut output = vec![0.0; self.output_size];
-
-        for j in 0..self.output_size {
-            let mut sum = 0.0;
-
-            for i in 0..self.input_size {
-                let x = input[i];
-                let base = Self::silu(x);
-                let spline = self.evaluate_spline(&self.spline_coeffs[j][i], x);
-
-                sum += self.base_weight[j][i] * base + self.spline_weight[j][i] * spline;
-            }
-
-            output[j] = sum;
-        }
-
-        output
-    }
-
-    pub fn backward(
-        &self,
-        input: &[f32],
-        output_grad: &[f32],
-    ) -> (Vec<Vec<f32>>, Vec<Vec<f32>>, Vec<Vec<Vec<f32>>>) {
-        let mut base_weight_grad = vec![vec![0.0; self.input_size]; self.output_size];
-        let mut spline_weight_grad = vec![vec![0.0; self.input_size]; self.output_size];
-        let mut spline_coeff_grad =
-            vec![
-                vec![vec![0.0; self.grid_size + self.spline_order]; self.input_size];
-                self.output_size
-            ];
-
-        let mut input_grad = vec![0.0; self.input_size];
-
-        for j in 0..self.output_size {
-            let grad_j = output_grad[j];
-
-            for i in 0..self.input_size {
-                let x = input[i];
-                let base = Self::silu(x);
-                let base_deriv = Self::silu_derivative(x);
-                let spline = self.evaluate_spline(&self.spline_coeffs[j][i], x);
-                let spline_deriv = self.spline_derivative(&self.spline_coeffs[j][i], x);
-
-                base_weight_grad[j][i] = grad_j * base;
-                spline_weight_grad[j][i] = grad_j * spline;
-
-                let coeff_grad = grad_j * self.spline_weight[j][i] * spline_deriv;
-                for k in 0..self.spline_coeffs[j][i].len() {
-                    spline_coeff_grad[j][i][k] = coeff_grad;
-                }
-
-                input_grad[i] += grad_j
-                    * (self.base_weight[j][i] * base_deriv
-                        + self.spline_weight[j][i] * spline_deriv);
-            }
-        }
-
-        (base_weight_grad, spline_weight_grad, spline_coeff_grad)
-    }
-
-    pub fn update_params(
-        &mut self,
-        base_grad: &[Vec<f32>],
-        spline_weight_grad: &[Vec<f32>],
-        coeff_grad: &[Vec<Vec<f32>>],
-        learning_rate: f32,
-    ) {
-        for j in 0..self.output_size {
-            for i in 0..self.input_size {
-                self.base_weight[j][i] -= learning_rate * base_grad[j][i];
-                self.spline_weight[j][i] -= learning_rate * spline_weight_grad[j][i];
-
-                for k in 0..self.spline_coeffs[j][i].len() {
-                    self.spline_coeffs[j][i][k] -= learning_rate * coeff_grad[j][i][k];
-                }
-            }
-        }
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.output_size * self.input_size * (3 + self.grid_size + self.spline_order)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SplineActivation {
-    pub coeffs: Vec<f32>,
-    pub base_weight: f32,
-    pub spline_weight: f32,
-    pub grid_size: usize,
-    pub spline_order: usize,
-    pub grid_min: f32,
-    pub grid_max: f32,
+#[derive(Clone, Debug)]
+pub(crate) struct BasisEvaluation {
+    pub(crate) values: Vec<f32>,
+    pub(crate) derivatives: Vec<f32>,
 }
 
 impl SplineActivation {
-    pub fn new(grid_size: usize) -> Self {
-        let spline_order = 3;
-        let grid_min = -1.0;
-        let grid_max = 1.0;
-
-        let mut rng = rand::thread_rng();
-        let mut coeffs = Vec::new();
-
-        for _ in 0..(grid_size + spline_order) {
-            coeffs.push(rng.gen_range(-0.1..0.1));
-        }
-
-        SplineActivation {
-            coeffs,
-            base_weight: 0.0,
-            spline_weight: 1.0,
-            grid_size,
-            spline_order,
-            grid_min,
-            grid_max,
+    pub(crate) fn new(
+        grid_intervals: usize,
+        domain: [f32; 2],
+        base_weight: f32,
+        spline_weight: f32,
+        coefficients: Vec<f32>,
+    ) -> Self {
+        Self {
+            coefficients,
+            base_weight,
+            spline_weight,
+            grid_intervals,
+            domain,
         }
     }
 
-    pub fn forward(&self, x: f32) -> f32 {
-        let base = SplineLayer::silu(x);
-        let spline = self.evaluate_spline(x);
-        self.base_weight * base + self.spline_weight * spline
+    pub(crate) fn evaluate(&self, input: f32) -> (f32, BasisEvaluation) {
+        let basis = self.basis(input);
+        let spline = dot(&self.coefficients, &basis.values);
+        (
+            self.base_weight * silu(input) + self.spline_weight * spline,
+            basis,
+        )
     }
 
-    pub fn evaluate_spline(&self, x: f32) -> f32 {
-        if x < self.grid_min || x > self.grid_max {
-            return if x < self.grid_min {
-                self.coeffs.first().copied().unwrap_or(0.0)
+    pub(crate) fn spline_value_and_derivative(&self, basis: &BasisEvaluation) -> (f32, f32) {
+        (
+            dot(&self.coefficients, &basis.values),
+            dot(&self.coefficients, &basis.derivatives),
+        )
+    }
+
+    pub(crate) fn basis(&self, input: f32) -> BasisEvaluation {
+        let knots = exterior_uniform_knots(self.grid_intervals, self.domain);
+        let values = basis_values(&knots, SPLINE_DEGREE, input);
+        let lower_values = basis_values(&knots, SPLINE_DEGREE - 1, input);
+        let mut derivatives = vec![0.0; values.len()];
+
+        for index in 0..values.len() {
+            let left_denominator = knots[index + SPLINE_DEGREE] - knots[index];
+            let right_denominator = knots[index + SPLINE_DEGREE + 1] - knots[index + 1];
+            let left = if left_denominator == 0.0 {
+                0.0
             } else {
-                self.coeffs.last().copied().unwrap_or(0.0)
+                SPLINE_DEGREE as f32 * lower_values[index] / left_denominator
             };
+            let right = if right_denominator == 0.0 {
+                0.0
+            } else {
+                SPLINE_DEGREE as f32 * lower_values[index + 1] / right_denominator
+            };
+            derivatives[index] = left - right;
         }
 
-        let total_intervals = self.grid_size;
-        let interval_width = (self.grid_max - self.grid_min) / total_intervals as f32;
-
-        let scaled_x = (x - self.grid_min) / interval_width;
-        let mut spline_idx = scaled_x.floor() as usize;
-        spline_idx = spline_idx.min(total_intervals.saturating_sub(1));
-
-        let t = scaled_x - spline_idx as f32;
-
-        let start = spline_idx;
-        let end = (spline_idx + self.spline_order + 1).min(self.coeffs.len());
-
-        if start >= end {
-            return self.coeffs.last().copied().unwrap_or(0.0);
+        BasisEvaluation {
+            values,
+            derivatives,
         }
+    }
+}
 
-        let coeffs_for_interval = &self.coeffs[start..end];
+pub(crate) fn coefficient_count(grid_intervals: usize) -> usize {
+    grid_intervals + SPLINE_DEGREE
+}
 
-        self.evaluate_bspline(coeffs_for_interval, t)
+pub(crate) fn exterior_uniform_knots(grid_intervals: usize, domain: [f32; 2]) -> Vec<f32> {
+    let interval_width = (domain[1] - domain[0]) / grid_intervals as f32;
+    (0..(grid_intervals + 2 * SPLINE_DEGREE + 1))
+        .map(|index| domain[0] + (index as isize - SPLINE_DEGREE as isize) as f32 * interval_width)
+        .collect()
+}
+
+pub(crate) fn silu(input: f32) -> f32 {
+    input / (1.0 + (-input).exp())
+}
+
+pub(crate) fn silu_derivative(input: f32) -> f32 {
+    let sigmoid = 1.0 / (1.0 + (-input).exp());
+    sigmoid * (1.0 + input * (1.0 - sigmoid))
+}
+
+fn basis_values(knots: &[f32], degree: usize, input: f32) -> Vec<f32> {
+    if !input.is_finite() || input < knots[0] || input >= knots[knots.len() - 1] {
+        return vec![0.0; knots.len() - degree - 1];
     }
 
-    fn evaluate_bspline(&self, coeffs: &[f32], t: f32) -> f32 {
-        let k = self.spline_order;
+    let mut values: Vec<f32> = knots
+        .windows(2)
+        .map(|window| f32::from(window[0] <= input && input < window[1]))
+        .collect();
 
-        if k == 0 || coeffs.is_empty() {
-            return coeffs.first().copied().unwrap_or(0.0);
+    for current_degree in 1..=degree {
+        let mut next = vec![0.0; values.len() - 1];
+        for index in 0..next.len() {
+            let left_denominator = knots[index + current_degree] - knots[index];
+            let right_denominator = knots[index + current_degree + 1] - knots[index + 1];
+            let left = if left_denominator == 0.0 {
+                0.0
+            } else {
+                (input - knots[index]) * values[index] / left_denominator
+            };
+            let right = if right_denominator == 0.0 {
+                0.0
+            } else {
+                (knots[index + current_degree + 1] - input) * values[index + 1] / right_denominator
+            };
+            next[index] = left + right;
         }
-
-        let n = coeffs.len() - 1;
-        let mut temp = coeffs.to_vec();
-
-        for p in 1..=k {
-            for i in 0..(n - p + 1).min(temp.len().saturating_sub(1)) {
-                let alpha = t / p as f32;
-                temp[i] = (1.0 - alpha) * temp[i] + alpha * temp[i + 1];
-            }
-        }
-
-        temp[0]
+        values = next;
     }
+
+    values
+}
+
+fn dot(left: &[f32], right: &[f32]) -> f32 {
+    left.iter().zip(right).map(|(a, b)| a * b).sum()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{coefficient_count, exterior_uniform_knots, SplineActivation};
 
     #[test]
-    fn test_spline_layer_creation() {
-        let layer = SplineLayer::new(2, 3, 5);
-        assert_eq!(layer.input_size, 2);
-        assert_eq!(layer.output_size, 3);
-        assert_eq!(layer.grid_size, 5);
+    fn exterior_uniform_knots_match_the_paper_grid_contract() {
+        assert_eq!(coefficient_count(3), 6);
+        let knots = exterior_uniform_knots(3, [-1.0, 1.0]);
+        let expected = [
+            -3.0,
+            -7.0 / 3.0,
+            -5.0 / 3.0,
+            -1.0,
+            -1.0 / 3.0,
+            1.0 / 3.0,
+            1.0,
+            5.0 / 3.0,
+            7.0 / 3.0,
+            3.0,
+        ];
+        for (actual, expected) in knots.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-6);
+        }
     }
 
     #[test]
-    fn test_spline_forward() {
-        let layer = SplineLayer::new(2, 1, 3);
-        let input = vec![0.0, 0.0];
-        let output = layer.forward(&input);
-        assert_eq!(output.len(), 1);
+    fn cubic_basis_is_a_partition_of_unity_on_the_base_domain() {
+        let activation = SplineActivation::new(3, [-1.0, 1.0], 0.0, 1.0, vec![0.0; 6]);
+        for input in [-1.0, -0.75, -0.2, 0.0, 0.4, 0.99] {
+            let basis = activation.basis(input);
+            let sum: f32 = basis.values.iter().sum();
+            assert!((sum - 1.0).abs() < 1.0e-6, "input={input}, sum={sum}");
+            assert!(basis.values.iter().all(|value| *value >= 0.0));
+            assert!(basis.values.iter().filter(|value| **value > 0.0).count() <= 4);
+        }
     }
 
     #[test]
-    fn test_spline_activation() {
-        let act = SplineActivation::new(5);
-        let result = act.forward(0.5);
-        assert!(result.is_finite());
+    fn constant_coefficients_reproduce_a_constant_only_on_spline_support() {
+        let activation = SplineActivation::new(3, [-1.0, 1.0], 0.0, 1.0, vec![1.0; 6]);
+        for input in [-1.0, -0.2, 0.4, 1.0] {
+            let (value, _) = activation.evaluate(input);
+            assert!((value - 1.0).abs() < 1.0e-6);
+        }
+        for input in [-3.1, 3.0, 3.1] {
+            let (value, basis) = activation.evaluate(input);
+            assert_eq!(value, 0.0);
+            assert!(basis.values.iter().all(|basis_value| *basis_value == 0.0));
+            assert!(basis
+                .derivatives
+                .iter()
+                .all(|basis_derivative| *basis_derivative == 0.0));
+        }
+    }
+
+    #[test]
+    fn cubic_basis_has_the_expected_left_boundary_values() {
+        let activation = SplineActivation::new(3, [-1.0, 1.0], 0.0, 1.0, vec![0.0; 6]);
+        let basis = activation.basis(-1.0);
+        let expected = [1.0 / 6.0, 2.0 / 3.0, 1.0 / 6.0, 0.0, 0.0, 0.0];
+        for (actual, expected) in basis.values.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-6);
+        }
+    }
+
+    #[test]
+    fn spline_values_and_derivatives_match_scipy_with_identical_knots() {
+        // Generated with SciPy 1.18.0 BSpline using this module's explicit
+        // exterior-extended knot vector, not a clamped-knot constructor.
+        let activation = SplineActivation::new(
+            3,
+            [-1.0, 1.0],
+            0.0,
+            1.0,
+            vec![0.25, -0.5, 0.75, 1.25, -1.0, 0.5],
+        );
+        let fixtures = [
+            (-1.0, -0.166_666_67, 0.375),
+            (-0.75, 0.043_538_41, 1.209_960_9),
+            (-0.2, 0.782_333_3, 1.027_5),
+            (0.17, 0.928_409_34, -0.391_912_5),
+            (0.4, 0.691_5, -1.676_25),
+            (1.0, -0.375, -0.562_5),
+        ];
+
+        for (input, expected_value, expected_derivative) in fixtures {
+            let basis = activation.basis(input);
+            let (actual_value, actual_derivative) = activation.spline_value_and_derivative(&basis);
+            assert!((actual_value - expected_value).abs() < 1.0e-6);
+            assert!((actual_derivative - expected_derivative).abs() < 1.0e-5);
+        }
     }
 }

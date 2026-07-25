@@ -9,7 +9,9 @@ fn test_vector_operations() {
     assert_eq!(v1.subtract(&v2), Vector::new(vec![-3.0, -3.0, -3.0]));
     assert_eq!(v1.dot(&v2), 32.0);
     // assert_eq!(v1.cross(&v2), Vector::new(vec![20.0, -15.0, 10.0]));
-    assert_eq!(v1.magnitude(), 3.7416573867739413);
-    assert_eq!(v1.normalize(), Vector::new(vec![0.2672612419124244, 0.5345224838248488, 0.8017837]));
-
+    assert_eq!(v1.magnitude(), 3.741_657_5);
+    assert_eq!(
+        v1.normalize(),
+        Vector::new(vec![0.267_261_24, 0.534_522_5, 0.801_783_7])
+    );
 }

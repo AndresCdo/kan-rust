@@ -1,243 +1,101 @@
-# KAN Rust Implementation
+# KAN Core Technical Contract
 
-Technical documentation for the Kolmogorov-Arnold Networks implementation in Rust.
+This document describes the validated fixed-grid KAN core introduced in 0.2.0.
+It is intentionally narrower than the original project claims.
 
-## Table of Contents
+## Scope
 
-1. [Mathematical Foundation](#mathematical-foundation)
-2. [Architecture](#architecture)
-3. [API Reference](#api-reference)
-4. [Implementation Details](#implementation-details)
+Implemented and tested:
 
----
+- canonical degree-three B-spline edge functions;
+- sequential KAN forward propagation;
+- full multilayer reverse-mode MSE gradients;
+- deterministic initialization and full-batch SGD;
+- validated, versioned JSON persistence.
 
-## Mathematical Foundation
+Deferred: regularization, grid refinement, pruning, symbolic fitting, and
+legacy MLP/vector/matrix remediation.
 
-### Kolmogorov-Arnold Representation Theorem
+## Spline convention
 
-Any multivariate continuous function $f: [0,1]^n \to \mathbb{R}$ can be written as:
+For `G >= 1` uniform intervals over `[a, b]` and degree `p = 3`, let
+`h = (b - a) / G`. The knot vector is exterior extended:
 
-$$f(x) = \sum_{q=1}^{2n+1} \Phi_q \left( \sum_{p=1}^{n} \phi_{q,p}(x_p) \right)$$
-
-Where $\phi_{q,p}: [0,1] \to \mathbb{R}$ and $\Phi_q: \mathbb{R} \to \mathbb{R}$ are univariate functions.
-
-### Activation Function Parametrization
-
-Each learnable activation function is parameterized as:
-
-$$\phi(x) = w_b \cdot b(x) + w_s \cdot \text{spline}(x)$$
-
-Where:
-- $b(x) = \text{SiLU}(x) = \frac{x}{1 + e^{-x}}$ (base function)
-- $\text{spline}(x) = \sum_i c_i B_i(x)$ (B-spline)
-
-### Grid Extension
-
-To refine the approximation, grids can be extended from $G_1$ to $G_2$ intervals:
-
-$$\{c'_j\} = \arg\min_{c'_j} \mathbb{E}_{x \sim p(x)} \left[ \sum_{j=0}^{G_2+k-1} c'_j B'_j(x) - \sum_{i=0}^{G_1+k-1} c_i B_i(x) \right]^2$$
-
-### Regularization
-
-Total loss with L1 and entropy regularization:
-
-$$\ell_{total} = \ell_{pred} + \lambda \left( \mu_1 \|\Phi\|_1 + \mu_2 S(\Phi) \right)$$
-
-Where:
-- $\|\Phi\|_1 = \sum_{i,j} |\phi_{i,j}|$ (L1 norm)
-- $S(\Phi) = -\sum_{i,j} \frac{|\phi_{i,j}|}{\|\Phi\|_1} \log\frac{|\phi_{i,j}|}{\|\Phi\|_1}$ (entropy)
-
-### Scaling Law
-
-With B-splines of order $k=3$ (cubic):
-
-$$\text{RMSE} \propto G^{-(k+1)} = G^{-4}$$
-
----
-
-## Architecture
-
-### Network Structure
-
-```
-KanNetwork
-├── layers: Vec<KanLayer>
-│   └── KanLayer
-│       ├── input_size: usize
-│       ├── output_size: usize
-│       ├── grid_size: usize
-│       ├── spline_order: usize
-│       └── activations: Vec<Vec<SplineActivation>>
-│           └── SplineActivation
-│               ├── coeffs: Vec<f32>
-│               ├── base_weight: f32
-│               ├── spline_weight: f32
-│               ├── grid_size: usize
-│               └── spline_order: usize
-├── grid_size: usize
-├── grid_extend_step: usize
-├── lambda_reg: f32
-├── mu1: f32
-└── mu2: f32
+```text
+t_i = a + (i - p) * h, for i = 0 .. G + 2p
 ```
 
----
+There are `G + 2p + 1 = G + 7` knots and `G + p = G + 3` coefficients. This
+is the convention used by the KAN paper and pykan; it is not the repeated-end
+clamped-knot convention.
 
-## API Reference
+The Cox-de Boor recurrence is:
 
-### Creating a KAN
-
-```rust
-use kan::network::kan::create_kan;
-
-// Shape [2, 5, 1] with grid_size = 3
-let kan = create_kan(&[2, 5, 1], 3);
+```text
+B[i, 0](x) = 1 when t[i] <= x < t[i + 1], otherwise 0
+B[i, p](x) = (x - t[i]) / (t[i + p] - t[i]) * B[i, p - 1](x)
+           + (t[i + p + 1] - x) / (t[i + p + 1] - t[i + 1]) * B[i + 1, p - 1](x)
 ```
 
-### Forward Pass
+Zero-denominator terms contribute zero. For inputs outside the extended
+interval `[t[0], t[last])`, the spline basis and its derivative are zero; the
+SiLU residual branch remains active.
 
-```rust
-let input = vec![0.5, 0.3];
-let output = kan.forward(&input);
+## Forward and reverse pass
+
+Every edge is
+
+```text
+phi(x) = w_base * SiLU(x) + w_spline * sum_r c[r] * B[r, 3](x)
 ```
 
-### Training
+Nodes sum incoming edge outputs. Given an incoming node adjoint `delta`, the
+parameter and input derivatives are:
 
-```rust
-let inputs = vec![
-    vec![0.1, 0.2],
-    vec![0.3, 0.4],
-];
-let targets = vec![
-    vec![0.3],
-    vec![0.7],
-];
-
-// Train for 100 epochs with learning rate 0.01
-kan.train(&inputs, &targets, 100, 0.01);
+```text
+dL/dw_base   = delta * SiLU(x)
+dL/dw_spline = delta * spline(x)
+dL/dc[r]     = delta * w_spline * B[r, 3](x)
+dL/dx        = delta * (w_base * SiLU'(x) + w_spline * spline'(x))
 ```
 
-### Loss Calculation
+The trainer caches node values, walks layers from output to input, accumulates
+all edge gradients, and applies one simultaneous full-batch SGD update.
 
-```rust
-let mse_loss = kan.mse_loss(&inputs, &targets);
-let total_loss = kan.total_loss(&inputs, &targets); // with regularization
-```
+Initialization is reproducible across platforms through the in-tree SplitMix64
+sequence. In layer/output/input traversal order, base weights are sampled from
+a signed uniform distribution and divided by the square root of the input
+width, spline weights start at `1`, and coefficients use signed uniform noise
+scaled by `0.01`. The seed defaults to `0` and can be set with `with_seed`.
 
-### Grid Extension
+## Validation and persistence
 
-```rust
-// Extend grid from G=3 to G=10
-kan.grid_extend(10);
-```
+`KanConfig` requires at least two non-zero widths, non-zero grid intervals,
+and a finite domain with `min < max`. Forward and training validate exact
+dimensions, nonempty equal-sized batches, finite values, and positive finite
+learning rates. P0 rejects configurations above 250,000 trainable parameters,
+JSON source-state documents above 8 MiB, and documents above a bounded JSON
+node budget before typed deserialization or model allocation.
 
-### Pruning
+Persistence writes only source state in a `kan-rust` format-version `1`
+envelope: shape, degree, intervals, domain, and per-edge parameters. Knots,
+caches, and gradients are reconstructed rather than trusted from JSON. The
+loader rejects unknown fields, unsupported versions, malformed dimensions,
+incorrect coefficient counts, duplicate fields, excessive JSON complexity, and
+non-finite parameters. The CLI checks metadata on the opened regular-file
+handle and retains an in-band limit-plus-one read. Hostile special files that
+can block during `open` are outside the portable CLI threat model.
 
-```rust
-// Remove connections with magnitude < 0.01
-kan.prune(0.01);
-```
+## Verification strategy
 
-### Getting Network Info
-
-```rust
-let shape = kan.get_shape();     // vec![2, 5, 1]
-let num_params = kan.num_params();
-```
-
----
-
-## Implementation Details
-
-### B-Spline Implementation
-
-The B-spline evaluation uses the de Boor's algorithm:
-
-```rust
-fn evaluate_bspline(&self, coeffs: &[f32], t: f32) -> f32 {
-    let k = self.spline_order;
-    let n = coeffs.len() - 1;
-    
-    if k == 0 {
-        return coeffs[n];
-    }
-    
-    let mut temp = coeffs.to_vec();
-    
-    for p in 1..=k {
-        for i in 0..(n - p + 1) {
-            let alpha = t / p as f32;
-            temp[i] = (1.0 - alpha) * temp[i] + alpha * temp[i + 1];
-        }
-    }
-    
-    temp[0]
-}
-```
-
-### SiLU Activation
-
-$$\text{SiLU}(x) = \frac{x}{1 + e^{-x}}$$
-
-Derivative:
-
-$$\text{SiLU}'(x) = \sigma(x) \cdot (1 + x \cdot (1 - \sigma(x)))$$
-
-Where $\sigma(x) = \frac{1}{1 + e^{-x}}$.
-
-### Initialization
-
-| Parameter | Initialization |
-|-----------|---------------|
-| $c_i$ (spline coeffs) | $\mathcal{N}(0, 0.1^2)$ |
-| $w_s$ (spline weight) | $1.0$ |
-| $w_b$ (base weight) | $0.0$ (Xavier init planned) |
-
-### Hyperparameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `grid_size` | 3 | Number of grid intervals |
-| `spline_order` | 3 | B-spline order (cubic) |
-| `grid_extend_step` | 200 | Steps between grid extensions |
-| `lambda_reg` | 0.01 | Regularization magnitude |
-| `mu1` | 1.0 | L1 weight |
-| `mu2` | 1.0 | Entropy weight |
-| `prune_threshold` | 0.01 | Minimum magnitude to keep |
-
----
-
-## Examples
-
-### Regression Example
-
-```rust
-use kan::network::kan::create_kan;
-
-fn main() {
-    // Create KAN: [1, 1] for 1D regression
-    let mut kan = create_kan(&[1, 1], 5);
-    
-    // f(x) = sin(x) * exp(x)
-    let inputs: Vec<Vec<f32>> = (0..100)
-        .map(|i| vec![i as f32 / 100.0 * 2.0 * std::f32::consts::PI])
-        .collect();
-    let targets: Vec<Vec<f32>> = inputs.iter()
-        .map(|x| vec![x[0].sin() * x[0].exp()])
-        .collect();
-    
-    // Train
-    kan.train(&inputs, &targets, 500, 0.001);
-    
-    // Test
-    let test_input = vec![std::f32::consts::PI / 2.0];
-    let output = kan.forward(&test_input);
-    println!("f(π/2) ≈ {}", output[0]);
-}
-```
-
----
+Tests cover exterior knot counts, basis partition of unity, left-boundary
+values, coefficient/base/spline-weight finite differences across multiple
+layers, deterministic `[2, 5, 1]` training loss reduction, invalid inputs, and
+persistence round trips. Gradient checks use interior points away from knots;
+they are not claims about nonsmooth future features such as pruning.
 
 ## References
 
-- Liu, Z., Wang, Y., Vaidya, S., Ruehle, F., Halverson, J., Soljačić, M., Hou, T.Y. & Tegmark, M. (2024). KAN: Kolmogorov-Arnold Networks. arXiv:2404.19756
+- Liu et al., [KAN: Kolmogorov-Arnold Networks](https://arxiv.org/html/2404.19756v5), Eq. 2.5 and 2.10-2.16.
+- [pykan `spline.py`](https://github.com/KindXiaoming/pykan/blob/master/kan/spline.py).
+- [SciPy `BSpline`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.BSpline.html), used only with an identical knot vector when comparing values.

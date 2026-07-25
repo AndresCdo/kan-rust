@@ -1,8 +1,15 @@
 [package]
 name = "kan"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Andres Caicedo <andres.felipe.caicedo.ultengo@outlook.com>"]
 edition = "2021"
+description = "A correctness-first Rust implementation of fixed-grid Kolmogorov-Arnold Networks"
+license = "MIT"
+repository = "https://github.com/AndresCdo/kan-rust"
+homepage = "https://github.com/AndresCdo/kan-rust"
+documentation = "https://docs.rs/kan"
+keywords = ["kan", "machine-learning", "splines", "neural-network"]
+categories = ["algorithms", "science"]
 
 [lib]
 name = "kan"
@@ -15,6 +22,6 @@ path = "src/bin/kan.rs"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rand = "0.8"
-indicatif = "0.15"
-ctrlc = "3.1"
+thiserror = "2.0"
+rand = "0.8.6"
+indicatif = "0.18"
