@@ -7,7 +7,7 @@ description = "A correctness-first Rust implementation of fixed-grid Kolmogorov-
 license = "MIT"
 repository = "https://github.com/AndresCdo/kan-rust"
 homepage = "https://github.com/AndresCdo/kan-rust"
-documentation = "https://docs.rs/kan"
+documentation = "https://github.com/AndresCdo/kan-rust/blob/main/docs/TECHNICAL.md"
 keywords = ["kan", "machine-learning", "splines", "neural-network"]
 categories = ["algorithms", "science"]
 
