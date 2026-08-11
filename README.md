@@ -24,6 +24,10 @@ For `G` grid intervals on `[a, b]`, the core uses degree `p = 3`, `G + 3`
 coefficients, and `G + 7` exterior-extended uniform knots. The paper and
 pykan call `p` an "order"; this crate uses the conventional term **degree**.
 
+[docs/TECHNICAL.md](docs/TECHNICAL.md) is the core contract: implemented
+versus deferred scope, the knot and gradient conventions, and the validation
+rules the loader and trainer enforce.
+
 ## Installation
 
 Build this checkout:
